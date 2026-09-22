@@ -4,14 +4,15 @@ from functools import lru_cache
 import argparse
 import os
 import sys
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from feishu_mbti.presentation import format_profile
 
 SCALE = 2
-WIDTH, HEIGHT = 1600, 1050
+WIDTH, HEIGHT = 1460, 603
+ORIGIN_X, ORIGIN_Y = 70, 255
 INK, MUTED, BLUE = '#252b37', '#768295', '#3370ff'
 
 
@@ -25,7 +26,7 @@ def render(output, font_path=None):
     if not chosen:
         raise SystemExit('Pass --font with a Chinese-capable .ttf or .ttc file.')
     latin_path = Path(os.environ.get('WINDIR', 'C:/Windows')) / 'Fonts/segoeui.ttf'
-    image = Image.new('RGB', (WIDTH * SCALE, HEIGHT * SCALE), '#f4f7fc')
+    image = Image.new('RGB', (WIDTH * SCALE, HEIGHT * SCALE), 'white')
     draw = ImageDraw.Draw(image)
 
     @lru_cache(maxsize=30)
@@ -33,17 +34,20 @@ def render(output, font_path=None):
         return ImageFont.truetype(str(latin_path if latin and latin_path.is_file() else chosen), round(size * SCALE))
 
     def rect(box, fill, radius=0, outline=None, width=1):
-        draw.rounded_rectangle(tuple(round(value * SCALE) for value in box), radius=radius * SCALE,
+        translated = tuple(round((value - (ORIGIN_X if index % 2 == 0 else ORIGIN_Y)) * SCALE)
+                           for index, value in enumerate(box))
+        draw.rounded_rectangle(translated, radius=radius * SCALE,
                                fill=fill, outline=outline, width=width * SCALE)
 
     def text(x, cy, value, size=22, color=INK, latin=False):
         face = font(size, latin)
         box = draw.textbbox((0, 0), value, font=face)
-        draw.text((x * SCALE, cy * SCALE - (box[1] + box[3]) / 2), value, font=face, fill=color)
+        draw.text(((x-ORIGIN_X) * SCALE, (cy-ORIGIN_Y) * SCALE - (box[1] + box[3]) / 2), value, font=face, fill=color)
         return draw.textlength(value, font=face) / SCALE
 
     def line(x1, y1, x2, y2, color='#e9edf3', width=1):
-        draw.line((x1*SCALE, y1*SCALE, x2*SCALE, y2*SCALE), fill=color, width=width*SCALE)
+        draw.line(((x1-ORIGIN_X)*SCALE, (y1-ORIGIN_Y)*SCALE,
+                   (x2-ORIGIN_X)*SCALE, (y2-ORIGIN_Y)*SCALE), fill=color, width=width*SCALE)
 
     def avatar(x, y, letter, background, foreground=BLUE):
         rect((x, y, x+42, y+42), background, 15)
@@ -51,23 +55,7 @@ def render(output, font_path=None):
         span = draw.textlength(letter, font=face) / SCALE
         text(x+(42-span)/2, y+21, letter, 23, foreground)
 
-    text(76, 82, 'lark-mbti-jev', 48, latin=True)
-    text(78, 143, '在聊天里，看见一点沟通风格。', 25, MUTED)
-    rect((1197, 65, 1525, 105), '#e8eefb', 20)
-    text(1218, 85, 'Windows  /  Feishu · Lark', 21, BLUE, True)
-
-    shadow = Image.new('RGBA', image.size)
-    ImageDraw.Draw(shadow).rounded_rectangle((70*SCALE, 217*SCALE, 1530*SCALE, 868*SCALE), radius=22*SCALE, fill=(24, 47, 83, 24))
-    image.paste(shadow.filter(ImageFilter.GaussianBlur(16*SCALE)), (0, 0), shadow.filter(ImageFilter.GaussianBlur(16*SCALE)))
-    draw = ImageDraw.Draw(image)
-    rect((70, 205, 1530, 858), 'white', 18)
-    rect((70, 205, 1530, 253), '#f9fafc', 18)
-    rect((70, 236, 1530, 255), '#f9fafc')
-    text(92, 230, '桌面聊天 · 效果示意', 17, MUTED)
-    text(1420, 229, '—   □   ×', 19, MUTED, True)
-    rect((71, 255, 171, 837), '#eef2f8')
-    rect((71, 816, 171, 857), '#eef2f8', 16)
-    rect((150, 816, 171, 857), '#eef2f8')
+    rect((70, 255, 171, 858), '#eef2f8')
     avatar(101, 278, '我', '#dce6f8')
     for index, item in enumerate(('消息', '日历', '文档', '工作台')):
         y = 367 + index * 74
@@ -116,15 +104,6 @@ def render(output, font_path=None):
     rect((1408, 801, 1501, 837), '#eef2f8', 8)
     text(1433, 819, '发送', 18, '#8b98ab')
 
-    for x, heading, detail in [
-        (78, '字号跟随 · 同行居中', '与姓名自然对齐'),
-        (589, '结果缓存 · 第 11 条才更新', '每人最多保留 1,000 条文本'),
-        (1120, '滚动隐藏 · 停稳恢复', '已有判定直接读取缓存'),
-    ]:
-        rect((x, 905, x+4, 949), BLUE, 2)
-        text(x+18, 915, heading, 23)
-        text(x+18, 952, detail, 18, MUTED)
-    text(78, 1010, '人物、群名、消息及概率均为虚构。MBTI 为聊天风格推测，模型概率不代表人格测量准确率。', 16, MUTED)
     output.parent.mkdir(parents=True, exist_ok=True)
     image.resize((WIDTH, HEIGHT), Image.Resampling.LANCZOS).save(output)
     print(f'Rendered {output.name}: {WIDTH} x {HEIGHT}, fictional data only.')
