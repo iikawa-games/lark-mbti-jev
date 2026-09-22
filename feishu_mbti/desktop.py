@@ -140,6 +140,26 @@ def title_matches(lines, title, scale=1.5):
     return any(value == expected or re.fullmatch(re.escape(expected) + r'\d+(?:公开|私有)?', value) for value in candidates)
 
 
+def label_regions_stable(before, after, lines, anchors, title, scale):
+    """Ignore body animations while rejecting stale title and sender positions."""
+    if before.size != after.size:
+        return False
+    regions = [(line, line.x + line.width) for line in lines
+               if title_matches([line], title, scale)]
+    if not regions:
+        return False
+    regions.extend((anchor['line'], anchor['x']) for anchor in anchors)
+    for line, right in regions:
+        box = (max(0, int(line.x) - 1), max(0, int(line.y) - 1),
+               min(before.width, int(right + 2)),
+               min(before.height, int(line.y + line.height + 2)))
+        if box[2] <= box[0] or box[3] <= box[1]:
+            return False
+        if before.crop(box).tobytes() != after.crop(box).tobytes():
+            return False
+    return True
+
+
 def foreground_feishu():
     import win32gui
     import win32process
@@ -268,19 +288,20 @@ def scan_chat(title, people, aliases=None, monitor=None):
     else:
         lines = asyncio.run(read_chat_image(image, scale))
         _last_ocr.update(key=key, lines=lines)
-    # Inertial scrolling can outlast the last wheel event. Only use OCR while
-    # its source pixels still match a second frame, including on cache hits.
+    if not title_matches(lines, title, scale):
+        return {'state': 'other_chat', 'anchors': []}
+    anchors = resolve_people(lines, people, aliases=aliases, scale=scale)
+    # Inertial scrolling can outlast the last wheel event. Check the pixels
+    # supporting label placement, including cache hits. GIFs, avatars and other
+    # animations elsewhere in the chat must not suppress stationary labels.
     time.sleep(.08)
     captured_at = time.monotonic()
     latest = ImageGrab.grab(bbox=rect, all_screens=True).crop((0, 0, image.width, image.height))
-    if hashlib.blake2b(latest.tobytes(), digest_size=16).digest() != key[-1]:
+    if not label_regions_stable(image, latest, lines, anchors, title, scale):
         return {'state': 'moving', 'anchors': []}
     # Reject snapshots from a moved, minimized or switched window.
     if hwnd != win32gui.GetForegroundWindow() or win32gui.IsIconic(hwnd) or win32gui.GetWindowRect(hwnd) != window_rect:
         return {'state': 'background', 'anchors': []}
-    if not title_matches(lines, title, scale):
-        return {'state': 'other_chat', 'anchors': []}
-    anchors = resolve_people(lines, people, aliases=aliases, scale=scale)
     for item in anchors:
         item['x'] += rect[0]
         item['y'] += rect[1]
