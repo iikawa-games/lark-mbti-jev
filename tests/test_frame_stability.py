@@ -2,7 +2,7 @@ import unittest
 
 from PIL import Image, ImageDraw
 
-from feishu_mbti.desktop import Line, label_regions_stable, resolve_people
+from feishu_mbti.desktop import Line, label_regions_stable, resolve_people, reusable_name_layout
 
 
 class FrameStabilityTests(unittest.TestCase):
@@ -50,6 +50,25 @@ class FrameStabilityTests(unittest.TestCase):
     def test_unchanged_frame_and_changed_dimensions(self):
         self.assertTrue(self.stable(self.before.copy()))
         self.assertFalse(self.stable(self.before.crop((0, 0, 500, 500))))
+
+    def test_message_animation_reuses_name_layout(self):
+        after = self.before.copy()
+        ImageDraw.Draw(after).rectangle((75, 260, 400, 380), fill='red')
+        self.assertTrue(reusable_name_layout(self.before, after, self.lines, self.title, 1))
+
+    def test_new_sender_in_formerly_empty_area_invalidates_ocr(self):
+        after = self.before.copy()
+        ImageDraw.Draw(after).text((61, 400), 'Bob', fill='black')
+        self.assertFalse(reusable_name_layout(self.before, after, self.lines, self.title, 1))
+
+    def test_status_growth_and_changed_body_text_invalidate_ocr(self):
+        after = self.before.copy()
+        ImageDraw.Draw(after).text((140, 220), 'New status', fill='black')
+        self.assertFalse(reusable_name_layout(self.before, after, self.lines, self.title, 1))
+        self.lines.append(Line('Body text', 74, 260, 90, 15))
+        after = self.before.copy()
+        ImageDraw.Draw(after).text((74, 260), 'Body text', fill='black')
+        self.assertFalse(reusable_name_layout(self.before, after, self.lines, self.title, 1))
 
 
 if __name__ == '__main__':

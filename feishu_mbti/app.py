@@ -29,10 +29,11 @@ class Badges:
         self.root = root
         self.windows = []
         self.signature = None
+        self.pool = {}
 
     def clear(self):
         for win in self.windows:
-            win.destroy()
+            win.withdraw()
         self.windows.clear()
         self.signature = None
 
@@ -40,42 +41,72 @@ class Badges:
         import win32gui
         import win32con
         signature = tuple((a['id'], round(a['x']), round(a['y']), round(a['height']),
-                           a.get('right_limit'), scale, format_profile(profiles.get(a['id']))) for a in anchors)
+                           a.get('right_limit'), a.get('font_pixels'), scale,
+                           format_profile(profiles.get(a['id']))) for a in anchors)
         if self.signature == signature:
             return
-        self.clear()
         self.signature = signature
+        visible = []
+        used = set()
+        occurrences = {}
         for anchor in anchors:
+            occurrence = occurrences.get(anchor['id'], 0)
+            occurrences[anchor['id']] = occurrence + 1
+            key = (anchor['id'], occurrence)
+            used.add(key)
             profile = profiles.get(anchor['id'])
             text = format_profile(profile)
-            pixels = badge_font_pixels(anchor['height'], scale, anchor.get('display_name', ''))
-            win = tk.Toplevel(self.root)
-            win.withdraw()
-            win.overrideredirect(True)
-            win.configure(bg='#010203')
-            win.attributes('-transparentcolor', '#010203')
-            win.attributes('-topmost', True)
-            win.wm_attributes('-toolwindow', True)
-            label_widget = tk.Label(win, text=text, bg='#f2f4f7', fg='#646a73',
-                                    font=('Segoe UI', -pixels), anchor='center', justify='center', bd=0, highlightthickness=0,
-                                    padx=max(3, round(pixels * .25)), pady=0)
-            label_widget.pack()
-            win.update_idletasks()
+            pixels = anchor.get('font_pixels') or badge_font_pixels(anchor['height'], scale, anchor.get('display_name', ''))
+            entry = self.pool.get(key)
+            if entry is None:
+                win = tk.Toplevel(self.root)
+                win.withdraw()
+                win.overrideredirect(True)
+                win.configure(bg='#010203')
+                win.attributes('-transparentcolor', '#010203')
+                win.attributes('-topmost', True)
+                win.wm_attributes('-toolwindow', True)
+                label_widget = tk.Label(win, bg='#f2f4f7', fg='#646a73',
+                                        anchor='center', justify='center', bd=0,
+                                        highlightthickness=0, pady=0)
+                label_widget.pack()
+                entry = self.pool[key] = {'window': win, 'label': label_widget}
+            win, label_widget = entry['window'], entry['label']
+            if entry.get('style') != (text, pixels):
+                label_widget.configure(text=text, font=('Segoe UI', -pixels),
+                                       padx=max(3, round(pixels * .25)))
+                win.update_idletasks()
+                entry['style'] = (text, pixels)
             if anchor['x'] + label_widget.winfo_reqwidth() > anchor.get('right_limit', float('inf')):
-                win.destroy()
+                win.withdraw()
                 continue
             top = badge_top(anchor, label_widget.winfo_reqheight(), scale)
-            win.geometry(f'+{int(anchor["x"])}+{top}')
+            position = (int(anchor['x']), top)
+            if entry.get('position') != position:
+                win.geometry(f'+{position[0]}+{position[1]}')
+                entry['position'] = position
             hwnd = win32gui.GetParent(win.winfo_id()) or win.winfo_id()
-            styles = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
-            win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, styles | win32con.WS_EX_LAYERED |
-                                  win32con.WS_EX_TRANSPARENT | win32con.WS_EX_TOOLWINDOW | 0x08000000)
-            # Exclude our overlays from screen capture, avoiding OCR feedback loops.
-            ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, 0x11)
-            win.deiconify()
-            win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0,
-                                 win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE)
-            self.windows.append(win)
+            if not entry.get('native_ready'):
+                styles = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
+                win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, styles | win32con.WS_EX_LAYERED |
+                                      win32con.WS_EX_TRANSPARENT | win32con.WS_EX_TOOLWINDOW | 0x08000000)
+                ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, 0x11)
+                entry['native_ready'] = True
+            if win not in self.windows:
+                win.deiconify()
+                win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0,
+                                     win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE)
+            visible.append(win)
+        for win in self.windows:
+            if win not in visible:
+                win.withdraw()
+        self.windows = visible
+        # Bound native resources even after browsing many different senders.
+        for key in list(self.pool):
+            if len(self.pool) <= max(32, len(used)):
+                break
+            if key not in used:
+                self.pool.pop(key)['window'].destroy()
 
 
 class App:
@@ -148,6 +179,8 @@ class App:
         ttk.Button(search, text='选择群聊', command=self.search).pack(side='left', padx=(8, 0))
         self.chat_label = ttk.Label(outer, text='当前群：' + (self.chat['name'] or '尚未选择'), foreground=MUTED)
         self.chat_label.pack(anchor='w', pady=(9, 15))
+        self.capture_label = ttk.Label(outer, text='姓名定位：等待打开群聊', foreground=MUTED)
+        self.capture_label.pack(anchor='w', pady=(0, 8))
         actions = ttk.Frame(outer)
         actions.pack(fill='x')
         self.toggle_button = ttk.Button(actions, text='开启标签', command=self.toggle)
@@ -316,6 +349,15 @@ class App:
                 self.events.put(('profile_error', generation, (uid, type(exc).__name__)))
 
     def scanner(self):
+        import uiautomation as auto
+        from .accessibility import clear_thread_cache
+        with auto.UIAutomationInitializerInThread():
+            try:
+                self._scanner_loop()
+            finally:
+                clear_thread_cache()
+
+    def _scanner_loop(self):
         while not self.closed.is_set():
             if not self.scan_request.wait(.3):
                 continue
@@ -391,6 +433,9 @@ class App:
                     if not self.scroll.accepts(data.get('scroll_revision')):
                         continue
                     self.scan_state = data
+                    if getattr(self, 'capture_label', None) is not None and data.get('backend'):
+                        self.capture_label.config(text='姓名定位：桌面无障碍（无需截图）' if data['backend'] == 'msaa'
+                                                  else '姓名定位：截图识别（兼容模式）')
                     if data['state'] == 'ready' and self.enabled and foreground_feishu() == data.get('hwnd'):
                         for anchor in data['anchors']:
                             self.request_profile(anchor['id'])
@@ -424,7 +469,7 @@ class App:
                 self.badges.clear()
             elif ctypes.windll.user32.GetAsyncKeyState(0x01) & 0x8000:
                 self.badges.clear()
-            elif time.monotonic() - self.scan_state.get('captured_at', 0) > 1.7:
+            elif time.monotonic() - self.scan_state.get('captured_at', 0) > (3 if self.scan_state.get('backend') == 'msaa' else 1.7):
                 self.badges.clear()
         now = time.monotonic()
         if self.enabled and self.scroll.state()[1] and now-self.last_snapshot > 1.2:
@@ -432,7 +477,7 @@ class App:
             self.scan_request.set()
         if self.enabled and now-self.last_fetch > 60 and not self.loading:
             self.refresh(incremental=True)
-        self.root.after(33, self.tick)
+        self.root.after(33 if self.badges.windows else 150, self.tick)
 
     def render_table(self):
         selection = self.table.selection()

@@ -2,13 +2,12 @@
 from __future__ import annotations
 import asyncio
 import ctypes
-import hashlib
 import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass
 
-_last_ocr = {'key': None, 'lines': []}
+_last_ocr = {'key': None, 'lines': [], 'image': None}
 
 
 def dpi_aware():
@@ -160,6 +159,32 @@ def label_regions_stable(before, after, lines, anchors, title, scale):
     return True
 
 
+def reusable_name_layout(before, after, lines, title, scale):
+    """Keep OCR while the title, sender column and sender rows are unchanged.
+
+    The narrow column precedes message bodies. It also detects a newly visible
+    sender, including in a formerly empty part of the viewport.
+    """
+    if before is None or before.size != after.size:
+        return False
+    strip = (int(56 * scale), int(120 * scale),
+             min(after.width, int(70 * scale)), after.height)
+    if strip[2] <= strip[0] or strip[3] <= strip[1]:
+        return False
+    if before.crop(strip).tobytes() != after.crop(strip).tobytes():
+        return False
+    rows = [line for line in lines if
+            49 * scale <= line.x <= 70 * scale and line.y >= 120 * scale
+            and 7 * scale <= line.height <= 28 * scale]
+    # Include the entire row: status text may grow into the label's old position.
+    anchors = [{'line': line, 'x': after.width} for line in rows]
+    # Cached body text may be used to resolve a group nickname. Invalidate it
+    # when its actual text pixels change, without hashing empty/GIF rectangles.
+    anchors.extend({'line': line, 'x': line.x + line.width} for line in lines
+                   if line not in rows and line.y >= 120 * scale)
+    return label_regions_stable(before, after, lines, anchors, title, scale)
+
+
 def foreground_feishu():
     import win32gui
     import win32process
@@ -264,6 +289,26 @@ async def read_chat_image(image, scale):
 
 
 def scan_chat(title, people, aliases=None, monitor=None):
+    hwnd = foreground_feishu()
+    if not hwnd:
+        return {'state': 'background', 'anchors': []}
+    from .accessibility import scan_accessible
+    from comtypes import COMError
+    try:
+        result = scan_accessible(title, people, aliases, hwnd, monitor)
+    except (OSError, ValueError, COMError):
+        from .accessibility import clear_thread_cache
+        clear_thread_cache()
+        result = None
+    if result is not None:
+        return result
+    # Older clients may not expose their chat tree through MSAA.
+    result = scan_chat_ocr(title, people, aliases, monitor)
+    result['backend'] = 'ocr'
+    return result
+
+
+def scan_chat_ocr(title, people, aliases=None, monitor=None):
     from PIL import ImageGrab
     import win32gui
     import uiautomation as auto
@@ -282,12 +327,13 @@ def scan_chat(title, people, aliases=None, monitor=None):
     # The compose box has no sender labels; leave it out of OCR and change detection.
     if image.height > 300 * scale:
         image = image.crop((0, 0, image.width, int(image.height - 90 * scale)))
-    key = (hwnd, image.size, scale, hashlib.blake2b(image.tobytes(), digest_size=16).digest())
-    if _last_ocr['key'] == key:
+    key = (hwnd, rect, image.size, scale, title)
+    if (_last_ocr['key'] == key and reusable_name_layout(
+            _last_ocr['image'], image, _last_ocr['lines'], title, scale)):
         lines = _last_ocr['lines']
     else:
         lines = asyncio.run(read_chat_image(image, scale))
-        _last_ocr.update(key=key, lines=lines)
+        _last_ocr.update(key=key, lines=lines, image=image)
     if not title_matches(lines, title, scale):
         return {'state': 'other_chat', 'anchors': []}
     anchors = resolve_people(lines, people, aliases=aliases, scale=scale)
