@@ -41,6 +41,14 @@ class ScrollTests(unittest.TestCase):
         self.now += .4
         self.assertTrue(self.scroll.state()[1])
 
+    def test_wheel_over_compose_box_is_ignored(self):
+        self.scroll.watch(42, (100, 100, 500, 500), (100, 150, 500, 400))
+        self.scroll.observe(0x020A, 200, 450, 42, 120 << 16)  # Compose box.
+        self.assertEqual(self.scroll.state(), (0, True))
+        self.assertEqual(self.scroll.wheels_since(0), [])
+        self.scroll.observe(0x020A, 200, 300, 42, 120 << 16)  # Message list.
+        self.assertEqual(self.scroll.wheels_since(0), [(10.0, 120)])
+
     def test_horizontal_wheel_invalidates(self):
         self.scroll.observe(0x020E, 200, 200, 42)
         self.assertEqual(self.scroll.state(), (1, False))

@@ -14,6 +14,7 @@ class ScrollMonitor:
         self._revision = 0
         self._last_motion = float('-inf')
         self._target = (None, None)
+        self._scroll_rect = None  # Message list only; the compose box scrolls itself
         self._dragging = False
         self._thread = None
         self._thread_id = None
@@ -21,8 +22,11 @@ class ScrollMonitor:
         self._error = None
         self._wheels = deque(maxlen=128)  # (time, signed delta) inside the chat
 
-    def watch(self, hwnd, rect):
+    def watch(self, hwnd, rect, scroll_rect=None):
         with self._lock:
+            # Keep the known message list while the same pane is watched.
+            if scroll_rect is not None or self._target != (hwnd, rect):
+                self._scroll_rect = scroll_rect
             self._target = (hwnd, rect)
 
     def state(self):
@@ -50,6 +54,10 @@ class ScrollMonitor:
             if not hwnd or hwnd != foreground or not rect:
                 return
             if not (rect[0] <= x < rect[2] and rect[1] <= y < rect[3]):
+                return
+            # A wheel over the compose box or header does not move the messages.
+            area = self._scroll_rect
+            if message in (0x020A, 0x020E) and area and not (area[0] <= x < area[2] and area[1] <= y < area[3]):
                 return
             if message == 0x0201:
                 self._dragging = True

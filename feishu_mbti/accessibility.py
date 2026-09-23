@@ -211,6 +211,8 @@ def scan_accessible(title, people, aliases, hwnd, monitor=None):
         if not title_matches(lines, title, scale):
             return {'state': 'other_chat', 'anchors': [], 'backend': 'msaa'}
         band, content, list_id = message_viewport(viewports, lines, rect, scale)
+        if monitor and content is not None:
+            monitor.watch(hwnd, rect, (rect[0], band[0], rect[2], band[1]))
         height = rect[3] - rect[1]
         # Senders come only from the scrolling list, never the fixed header or
         # pinned bar; names beyond the view are kept for scrolling in.
