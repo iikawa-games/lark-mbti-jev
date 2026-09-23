@@ -2,6 +2,7 @@
 from __future__ import annotations
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -89,8 +90,20 @@ def search_chats(query):
     return result.get('data', {}).get('chats', [])
 
 
+_MEDIA = re.compile(r'!\[[^\]]*\]\([^)]*\)|\[(?:Image|Media|File|Sticker|Video|Audio)(?::[^\]]*)?\]')
+
+
 def text_content(message):
-    if message.get('deleted') or message.get('msg_type') != 'text':
+    if message.get('deleted'):
+        return ''
+    if message.get('msg_type') == 'post':
+        # Rich text (often an image plus a caption): keep only what was typed.
+        content = message.get('content', '')
+        if not isinstance(content, str):
+            return ''
+        lines = (line.strip() for line in _MEDIA.sub('', content).splitlines())
+        return '\n'.join(line for line in lines if line)
+    if message.get('msg_type') != 'text':
         return ''
     content = message.get('content', '')
     if isinstance(content, dict):
@@ -141,7 +154,7 @@ def fetch_history(chat_id, *, days=90, pages=20, start=None):
             'started_at': started_at.isoformat()}
 
 
-def fetch_person_history(chat_id, user_id, *, days=90, pages=10):
+def fetch_person_history(chat_id, user_id, *, days=90, pages=4):
     if not chat_id.startswith('oc_') or not user_id.startswith('ou_'):
         raise LarkError('群或用户 ID 无效。')
     start = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec='seconds')

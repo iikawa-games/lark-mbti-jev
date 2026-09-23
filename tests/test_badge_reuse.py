@@ -34,3 +34,26 @@ class BadgeReuseTests(unittest.TestCase):
             self.assertLessEqual(len(badges.pool), 32)
         finally:
             root.destroy()
+
+    def test_labels_follow_names_and_park_outside_the_chat(self):
+        import tkinter as tk
+        from feishu_mbti.app import Badges
+        from feishu_mbti.desktop import dpi_aware
+
+        dpi_aware()
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            badges = Badges(root)
+            badges.show([dict(id='a', x=100, y=100, height=16, right_limit=600, track=0)], {}, 1)
+            win = badges.windows[0]
+            entry = badges.pool[('a', 0)]
+            badges.move([{'index': 0, 'x': 100, 'y': 60, 'height': 16, 'visible': True}])
+            self.assertEqual(entry['position'], (100, round(60 + (16 - entry['label'].winfo_reqheight()) / 2)))
+            badges.move([{'index': 0, 'visible': False}])
+            self.assertEqual(entry['position'], (-32000, -32000))  # Parked, ready to slide back.
+            self.assertEqual(win.state(), 'normal')
+            badges.move([{'index': 0, 'x': 100, 'y': 80, 'height': 16, 'visible': True}])
+            self.assertEqual(entry['position'][0], 100)
+        finally:
+            root.destroy()

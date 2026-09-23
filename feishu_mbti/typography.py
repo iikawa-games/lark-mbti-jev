@@ -18,10 +18,19 @@ def _ink_ratio(cjk):
         return .9 if cjk else .8
 
 
+# Labels sit a little smaller than the sender name so they read as secondary.
+BADGE_RATIO = .82
+
+
 def badge_font_pixels(name_height, scale=1, display_name=''):
     cjk = any('\u3400' <= char <= '\u9fff' for char in display_name)
     # A small floor handles marginal OCR; actual name height controls normal use.
-    return max(round(9 * scale), round(name_height / _ink_ratio(cjk)))
+    return max(round(8 * scale), round(name_height / _ink_ratio(cjk) * BADGE_RATIO))
+
+
+def accessible_font_pixels(line_height, scale=1):
+    """Accessibility boxes span the line height (about 1.2x the font size)."""
+    return max(round(8 * scale), round(line_height / 1.2 * BADGE_RATIO))
 
 
 def badge_top(anchor, widget_height, scale=1):

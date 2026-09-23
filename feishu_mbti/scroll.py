@@ -1,12 +1,13 @@
 """Observe scrolling in the current chat without consuming mouse input."""
 import ctypes
+from collections import deque
 from ctypes import wintypes
 import threading
 import time
 
 
 class ScrollMonitor:
-    def __init__(self, *, clock=time.monotonic, settle_seconds=.35):
+    def __init__(self, *, clock=time.monotonic, settle_seconds=.25):
         self.clock = clock
         self.settle_seconds = settle_seconds
         self._lock = threading.Lock()
@@ -18,6 +19,7 @@ class ScrollMonitor:
         self._thread_id = None
         self._ready = threading.Event()
         self._error = None
+        self._wheels = deque(maxlen=128)  # (time, signed delta) inside the chat
 
     def watch(self, hwnd, rect):
         with self._lock:
@@ -27,11 +29,15 @@ class ScrollMonitor:
         with self._lock:
             return self._revision, not self._dragging and self.clock() - self._last_motion >= self.settle_seconds
 
+    def wheels_since(self, since):
+        with self._lock:
+            return [item for item in self._wheels if item[0] >= since]
+
     def accepts(self, revision):
         current, settled = self.state()
         return settled and current == revision
 
-    def observe(self, message, x, y, foreground):
+    def observe(self, message, x, y, foreground, data=0):
         # Called by the native hook: only update a few fields, never OCR or Tk.
         with self._lock:
             hwnd, rect = self._target
@@ -50,6 +56,9 @@ class ScrollMonitor:
             if message in (0x020A, 0x020E, 0x0201) or (message == 0x0200 and self._dragging):
                 self._revision += 1
                 self._last_motion = self.clock()
+            if message == 0x020A:
+                delta = (data >> 16) & 0xFFFF
+                self._wheels.append((self._last_motion, delta - 0x10000 if delta & 0x8000 else delta))
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -85,8 +94,8 @@ class ScrollMonitor:
         @callback_type
         def callback(code, message, data):
             if code >= 0 and message in (0x0200, 0x0201, 0x0202, 0x020A, 0x020E):
-                point = ctypes.cast(data, ctypes.POINTER(MouseData)).contents.pt
-                self.observe(message, point.x, point.y, user.GetForegroundWindow())
+                contents = ctypes.cast(data, ctypes.POINTER(MouseData)).contents
+                self.observe(message, contents.pt.x, contents.pt.y, user.GetForegroundWindow(), contents.mouseData)
             return user.CallNextHookEx(None, code, message, data)
 
         try:

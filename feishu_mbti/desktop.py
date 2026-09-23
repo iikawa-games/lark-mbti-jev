@@ -67,10 +67,29 @@ class Line:
     width: float
     height: float
     words: tuple = ()  # (text, left, width) in the same coordinate space
+    list_id: int = -1  # Which scrolling list the text belongs to (accessibility only)
 
 
-def resolve_people(lines, people, *, aliases=None, scale=1.5):
-    """Require header geometry and exact identity evidence, never fuzzy-match names."""
+_samples = {}
+
+
+def sample_texts(people, uid):
+    """Normalized message texts, cached while the person's messages are unchanged."""
+    messages = people[uid]['messages']
+    key = (len(messages),) + ((messages[0]['text'], messages[-1]['text'], messages[-1].get('id')) if messages else ())
+    cached = _samples.get(uid)
+    if cached is None or cached[0] != key:
+        cached = _samples[uid] = (key, {normalized(msg['text']) for msg in messages})
+    return cached[1]
+
+
+def resolve_people(lines, people, *, aliases=None, scale=1.5, row_ok=None):
+    """Require header geometry and exact identity evidence, never fuzzy-match names.
+
+    row_ok decides which vertical positions may hold a sender row; by default
+    anything below the chat header.
+    """
+    row_ok = row_ok or (lambda line: 120 * scale <= line.y)
     aliases = aliases or {}
     names = defaultdict(set)
     for uid, person in people.items():
@@ -81,7 +100,7 @@ def resolve_people(lines, people, *, aliases=None, scale=1.5):
     for index, line in enumerate(lines):
         # Feishu's sender column starts 60 DIP from the chat pane's left edge.
         if not (57 * scale <= line.x <= 69 * scale and
-                120 * scale <= line.y and 7 * scale <= line.height <= 28 * scale):
+                row_ok(line) and 7 * scale <= line.height <= 28 * scale):
             continue
         display_name = re.split(r'[|｜丨]', line.text, maxsplit=1)[0].strip()
         base = re.split(r'[（(]', display_name, maxsplit=1)[0].strip()
@@ -89,26 +108,48 @@ def resolve_people(lines, people, *, aliases=None, scale=1.5):
         base_matches = names.get(normalized(base), set())
         matches = display_matches or base_matches
         matched_by_base = not display_matches and len(base_matches) == 1
+        via_text = False
         if len(matches) != 1:
             # A group nickname can differ from the directory name. Resolve it only
-            # when the following full message text uniquely matches the API sample.
-            following = []
-            for item in lines[index + 1:index + 7]:
-                if item.y - line.y >= 105 * scale:
+            # when the message text under it uniquely matches one person's sample.
+            following, quoted_rows = [], []
+            for item in lines[index + 1:index + 25]:
+                # Images or cards can sit between the name and its caption.
+                if item.y - line.y >= 500 * scale:
                     break
                 if 57 * scale <= item.x <= 69 * scale and 7 * scale <= item.height <= 28 * scale:
                     break
+                if item.text.lstrip().startswith('回复'):
+                    quoted_rows.append(item.y)
                 if item.y > line.y and item.x >= line.x:
                     following.append(item)
+            # A reply quote shows someone else's words on the same row.
+            following = [item for item in following
+                         if not any(abs(item.y - y) <= 4 * scale for y in quoted_rows)]
+            # Mentions and links are separate pieces of one row ("@name" + text);
+            # match the joined row as well as each piece.
+            rows = []
+            for item in following:
+                row = next((row for row in rows if abs(row[0].y - item.y) <= 4 * scale), None)
+                if row is None:
+                    rows.append([item])
+                else:
+                    row.append(item)
+            candidates = [item.text for item in following]
+            candidates += [''.join(piece.text for piece in sorted(row, key=lambda piece: piece.x))
+                           for row in rows if len(row) > 1]
             text_matches = set()
-            for next_line in following:
-                body = normalized(next_line.text)
-                if len(body) < 10:
+            for text in candidates:
+                body = normalized(text)
+                if len(body) < 4:
                     continue
-                for uid, person in people.items():
-                    if any(normalized(msg['text']) == body for msg in person['messages']):
+                # Same-named members: decide only between them.
+                for uid in (matches or people):
+                    samples = sample_texts(people, uid)
+                    if body in samples or (len(body) >= 8 and any(body in sample for sample in samples)):
                         text_matches.add(uid)
             matches = text_matches
+            via_text = True
         if len(matches) == 1:
             if matched_by_base:
                 # Once the base name is already an exact identity match, a suffix
@@ -118,24 +159,17 @@ def resolve_people(lines, people, *, aliases=None, scale=1.5):
             word_right = _prefix_right(line, display_name)
             if word_right is not None:
                 right = word_right
-            same_row_status = [item for item in lines if
-                item is not line
-                and item.x >= right - 2 * scale
-                and abs(item.y - line.y) <= max(4 * scale, min(item.height, line.height) / 2)
-                and bool(normalized(item.text))
-            ]
-            # Preserve the name's center line; use space after the occupied header
-            # when custom status text leaves no gap immediately after the name.
-            row_right = max([right, line.x + line.width] + [item.x + item.width for item in same_row_status])
+            # Sit directly after the name. The opaque label covers the start of
+            # any custom status, so a long status or link never hides it.
             result.append({'id': next(iter(matches)), 'display_name': display_name,
-                           'x': row_right + 7 * scale, 'y': line.y,
-                           'height': line.height, 'line': line})
+                           'x': right + 4 * scale, 'y': line.y,
+                           'height': line.height, 'line': line, 'via_text': via_text})
     return result
 
 
 def title_matches(lines, title, scale=1.5):
     expected = normalized(title)
-    candidates = [normalized(line.text) for line in lines if line.y < 55 * scale and line.x < 400 * scale]
+    candidates = [normalized(line.text) for line in lines if 0 <= line.y < 55 * scale and line.x < 400 * scale]
     return any(value == expected or re.fullmatch(re.escape(expected) + r'\d+(?:公开|私有)?', value) for value in candidates)
 
 
@@ -185,15 +219,45 @@ def reusable_name_layout(before, after, lines, title, scale):
     return label_regions_stable(before, after, lines, anchors, title, scale)
 
 
+SNIPPING_TOOLS = {'snippingtool.exe', 'screenclippinghost.exe', 'screensketch.exe', 'snipaste.exe',
+                  'pixpin.exe', 'sharex.exe', 'fscapture.exe', 'greenshot.exe', 'lightshot.exe'}
+
+
+def screen_overlay():
+    """True while a screenshot tool covers the screen; labels should stay put."""
+    import win32api
+    import win32con
+    import win32gui
+    hwnd = win32gui.GetForegroundWindow()
+    if not hwnd:
+        return False
+    if (process_name(hwnd) or '') in SNIPPING_TOOLS:
+        return True
+    # Built-in capture of Feishu, WeChat, QQ etc.: a topmost full-monitor window.
+    try:
+        monitor = win32api.GetMonitorInfo(win32api.MonitorFromWindow(hwnd, win32con.MONITOR_DEFAULTTONEAREST))['Monitor']
+        rect = win32gui.GetWindowRect(hwnd)
+    except Exception:
+        return False
+    covers = rect[0] <= monitor[0] and rect[1] <= monitor[1] and rect[2] >= monitor[2] and rect[3] >= monitor[3]
+    return covers and bool(win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE) & win32con.WS_EX_TOPMOST)
+
+
 def foreground_feishu():
     import win32gui
+    hwnd = win32gui.GetForegroundWindow()
+    if not hwnd or win32gui.IsIconic(hwnd):
+        return None
+    if process_name(hwnd) not in ('feishu.exe', 'lark.exe'):
+        return None
+    return hwnd
+
+
+def process_name(hwnd):
     import win32process
     import win32api
     import win32con
     from ctypes import wintypes
-    hwnd = win32gui.GetForegroundWindow()
-    if not hwnd or win32gui.IsIconic(hwnd):
-        return None
     _, pid = win32process.GetWindowThreadProcessId(hwnd)
     try:
         process = win32api.OpenProcess(win32con.PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
@@ -210,9 +274,7 @@ def foreground_feishu():
             process.Close()
     except Exception:
         return None
-    if path.replace('\\', '/').rsplit('/', 1)[-1].lower() not in ('feishu.exe', 'lark.exe'):
-        return None
-    return hwnd
+    return path.replace('\\', '/').rsplit('/', 1)[-1].lower()
 
 
 def chat_rectangle(hwnd):

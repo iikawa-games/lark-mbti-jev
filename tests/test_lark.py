@@ -17,7 +17,7 @@ class LarkTests(unittest.TestCase):
         args = command.call_args.args
         self.assertEqual(args[args.index('--chat-id')+1], 'oc_a')
         self.assertEqual(args[args.index('--sender')+1], 'ou_a')
-        self.assertEqual(args[args.index('--page-limit')+1], '10')
+        self.assertEqual(args[args.index('--page-limit')+1], '4')
 
     def test_incremental_history_keeps_the_requested_start(self):
         start = '2026-09-22T10:00:00+00:00'
@@ -38,6 +38,11 @@ class LarkTests(unittest.TestCase):
         self.assertEqual(text_content({'msg_type':'merge_forward','content':'forwarded'}), '')
         self.assertEqual(text_content({'msg_type':'image','content':'image-key'}), '')
         self.assertEqual(text_content({'msg_type':'text','content':'{"text":"hello"}'}), 'hello')
+
+    def test_rich_text_keeps_caption_without_media(self):
+        post = {'msg_type': 'post', 'content': '![Image](img_v3_abc)\n示例图片的说明文字\n[Sticker]'}
+        self.assertEqual(text_content(post), '示例图片的说明文字')
+        self.assertEqual(text_content({'msg_type': 'post', 'content': '![Image](img_v3_abc)'}), '')
 
 
 if __name__ == '__main__':

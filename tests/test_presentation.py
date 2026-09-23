@@ -27,5 +27,13 @@ class ProbabilityDisplayTests(unittest.TestCase):
         self.assertEqual(format_profile(None), '分析中')
 
 
+class BadgeSizeTests(unittest.TestCase):
+    def test_badge_is_smaller_than_sender_name(self):
+        from feishu_mbti.typography import accessible_font_pixels
+        # A 22 px accessibility box holds an ~18 px name; the label stays smaller.
+        self.assertEqual(accessible_font_pixels(22, 1.5), 15)
+        self.assertEqual(accessible_font_pixels(6, 1.5), 12)
+
+
 if __name__ == '__main__':
     unittest.main()

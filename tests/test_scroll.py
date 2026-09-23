@@ -71,6 +71,24 @@ class ScrollAppTests(unittest.TestCase):
         app.badges.show.assert_not_called()
         app.request_profile.assert_not_called()
 
+    def test_scrolling_keeps_msaa_labels_and_follows_newest_position(self):
+        harness = test_app_cache.AppCacheTests()
+        harness.setUp()
+        self.addCleanup(harness.doCleanups)
+        harness.prepare_tick()
+        app = harness.app
+        app.enabled = True
+        app.last_snapshot = app.last_fetch = 10**9
+        app.scan_request = Mock()
+        app.scan_state = {'backend': 'msaa', 'state': 'ready', 'hwnd': 42, 'captured_at': 0}
+        app.scroll.watch(42, (100, 100, 500, 500))
+        app.scroll.observe(0x020A, 200, 200, 42)
+        app.events.put(('track', 1, [{'index': 0, 'y': 1}]))
+        app.events.put(('track', 1, [{'index': 0, 'y': 2}]))
+        app.tick()
+        app.badges.clear.assert_not_called()
+        app.badges.move.assert_called_once_with([{'index': 0, 'y': 2}])
+
 
 if __name__ == '__main__':
     unittest.main()
