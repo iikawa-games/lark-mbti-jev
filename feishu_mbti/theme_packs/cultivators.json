@@ -1,0 +1,22 @@
+{
+  "name": "修仙者",
+  "description": "综合多部仙侠、修仙作品。类型与角色的对应是粉丝向的娱乐归类。",
+  "characters": {
+    "ISTJ": {"name": "蓝忘机", "series": "魔道祖师"},
+    "ISFJ": {"name": "陈平安", "series": "剑来"},
+    "INFJ": {"name": "陆雪琪", "series": "诛仙"},
+    "INTJ": {"name": "王林", "series": "仙逆"},
+    "ISTP": {"name": "韩立", "series": "凡人修仙传"},
+    "ISFP": {"name": "张小凡", "series": "诛仙"},
+    "INFP": {"name": "谢怜", "series": "天官赐福"},
+    "INTP": {"name": "秦牧", "series": "牧神记"},
+    "ESTP": {"name": "萧炎", "series": "斗破苍穹"},
+    "ESFP": {"name": "小舞", "series": "斗罗大陆"},
+    "ENFP": {"name": "白小纯", "series": "一念永恒"},
+    "ENTP": {"name": "魏无羡", "series": "魔道祖师"},
+    "ESTJ": {"name": "江澄", "series": "魔道祖师"},
+    "ESFJ": {"name": "师青玄", "series": "天官赐福"},
+    "ENFJ": {"name": "石昊", "series": "完美世界"},
+    "ENTJ": {"name": "唐三", "series": "斗罗大陆"}
+  }
+}

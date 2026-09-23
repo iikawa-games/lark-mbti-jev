@@ -20,6 +20,7 @@ from .message_cache import MessageCache
 from .typography import badge_font_pixels, badge_top
 from .scroll import ScrollMonitor
 from .tray import Tray, show_running_panel
+from .themes import character, ensure_custom_folder, load_themes
 
 DEFAULT_CHAT = {'chat_id': '', 'name': ''}
 TITLE = '飞书 MBTI · 本机标签'
@@ -40,6 +41,7 @@ class Badges:
         self.pool = {}
         self.slots = {}  # scan anchor 'track' index -> pool entry, for scrolling
         self.native = {}  # track index -> (hwnd, label height); read by the scanner thread
+        self.formatter = format_profile  # The app swaps in its theme-aware formatter.
 
     def clear(self):
         for win in self.windows:
@@ -104,7 +106,7 @@ class Badges:
     def show(self, anchors, profiles, scale):
         signature = tuple((a['id'], round(a['x']), round(a['y']), round(a['height']),
                            a.get('right_limit'), a.get('font_pixels'), scale,
-                           format_profile(profiles.get(a['id']))) for a in anchors)
+                           self.formatter(profiles.get(a['id']))) for a in anchors)
         if self.signature == signature:
             return
         self.signature = signature
@@ -119,7 +121,7 @@ class Badges:
             key = (anchor['id'], occurrence)
             used.add(key)
             profile = profiles.get(anchor['id'])
-            text = format_profile(profile)
+            text = self.formatter(profile)
             pixels = anchor.get('font_pixels') or badge_font_pixels(anchor['height'], scale, anchor.get('display_name', ''))
             entry = self.pool.get(key)
             if entry is None:
@@ -196,8 +198,12 @@ class App:
         self.last_fetch = 0
         self.poll_since = self.config.get('poll_cursors', {}).get(self.chat['chat_id']) if self.people else None
         self.badges = Badges(root)
+        self.themes = load_themes()
+        self.theme_id = self.config.get('theme', '') if self.config.get('theme') in self.themes else ''
+        self.badges.formatter = self.format
         self.build_ui()
         self.tray = Tray(self.commands.put, TITLE)
+        self.sync_tray_themes()
         self.status.trace_add('write', lambda *_: self.tray.set_tooltip('飞书 MBTI · ' + self.status.get()))
         threading.Thread(target=self.scanner, daemon=True, name='desktop-ocr').start()
         # Parallel workers: each new member needs a lark-cli read and a Jev call.
@@ -248,6 +254,14 @@ class App:
         self.chat_label.pack(anchor='w', pady=(8, 6))
         self.capture_label = ttk.Label(outer, text='姓名定位：等待打开群聊', foreground=MUTED)
         self.capture_label.pack(anchor='w', pady=(0, 8))
+        theme_row = ttk.Frame(outer)
+        theme_row.pack(fill='x', pady=(0, 8))
+        ttk.Label(theme_row, text='标签显示：').pack(side='left')
+        self.theme_choice = ttk.Combobox(theme_row, state='readonly', width=24, postcommand=self.reload_themes)
+        self.theme_choice.pack(side='left')
+        self.theme_choice.bind('<<ComboboxSelected>>', lambda _: self.set_theme(
+            self.theme_ids[self.theme_choice.current()]))
+        ttk.Button(theme_row, text='自定义主题…', command=self.open_theme_folder).pack(side='left', padx=8)
         actions = ttk.Frame(outer)
         actions.pack(fill='x')
         self.toggle_button = ttk.Button(actions, text='开启标签', command=self.toggle)
@@ -265,6 +279,7 @@ class App:
             self.table.column(key, width=width, minwidth=60)
         self.table.pack(fill='both', expand=True)
         self.table.bind('<Double-1>', lambda _: self.detail())
+        self.fill_theme_choice()
         bottom = ttk.Frame(outer)
         bottom.pack(fill='x', pady=(10, 0))
         ttk.Button(bottom, text='查看维度', command=self.detail).pack(side='left')
@@ -681,7 +696,7 @@ class App:
         for uid, person in self.people.items():
             combined[uid] = dict(person, **{k:v for k,v in self.profiles.get(uid, {}).items() if k not in ('name', 'messages')})
         for uid, person in sorted(combined.items(), key=lambda pair: (not bool(pair[1].get('label')), pair[1].get('name', ''))):
-            display = format_profile(person) if 'label' in person else '看到时分析'
+            display = self.format(person) if 'label' in person else '看到时分析'
             try:
                 updated = datetime.fromisoformat(person.get('updated_at', '').replace('Z', '+00:00')).astimezone().strftime('%m-%d %H:%M')
             except ValueError:
@@ -700,7 +715,12 @@ class App:
             self.request_profile(uid)
             self.status.set('正在分析选中成员…')
             return
-        rows = [result.get('name', ''), 'MBTI 推测：' + format_profile(result), f'有效文本样本：{result["sample_count"]} 条', '']
+        rows = [result.get('name', ''), 'MBTI 推测：' + format_profile(result)]
+        person = character(self.themes.get(self.theme_id), result.get('label'))
+        if person:
+            rows.append(f'{self.themes[self.theme_id]["name"]}主题：{person["name"]}'
+                        + (f'（{person["series"]}）' if person['series'] else ''))
+        rows.extend([f'有效文本样本：{result["sample_count"]} 条', ''])
         rows.extend([f'本群已缓存：{len(self.people.get(uid, {}).get("messages", []))} 条文本',
                      f'上次判定后新增：{self.messages.new_count(self.chat["chat_id"], uid, result)} 条（第 11 条更新）', ''])
         if result['status'] == 'insufficient':
@@ -712,6 +732,8 @@ class App:
             distribution = dim.get('probabilities', {})
             rows.append(title + '：' + '  '.join(f'{"待定" if option == "unknown" else option} {probability:.0%}' for option, probability in distribution.items()))
         rows.extend(['', '标签百分比来自 Jev 对 16 种 MBTI 的概率分布，不是四维概率的平均值。', '这是聊天风格推测，概率不是人格测量准确率。'])
+        if person:
+            rows.append('主题角色按 MBTI 类型对应，是娱乐性的归类。')
         messagebox.showinfo('四个维度', '\n'.join(rows), parent=self.root)
 
     def learn_aliases(self, anchors):
@@ -774,6 +796,51 @@ class App:
             self.refresh()
         elif command == 'quit':
             self.close()
+        elif command.startswith('theme:'):
+            self.set_theme(command[len('theme:'):])
+
+    def format(self, profile, **options):
+        return format_profile(profile, theme=self.themes.get(self.theme_id), **options)
+
+    def fill_theme_choice(self):
+        self.theme_ids = [''] + list(self.themes)
+        self.theme_choice['values'] = ['MBTI（默认）'] + [
+            theme['name'] + ('（自定义）' if key.startswith('custom:') else '') for key, theme in self.themes.items()]
+        self.theme_choice.current(self.theme_ids.index(self.theme_id))
+        theme = self.themes.get(self.theme_id)
+        self.table.heading('label', text=theme['name'] + '角色' if theme else 'MBTI 推测')
+
+    def reload_themes(self):
+        # Pick up edits in the theme folder whenever the list is opened.
+        self.themes = load_themes()
+        if self.theme_id not in self.themes:
+            self.theme_id = ''
+        self.fill_theme_choice()
+        self.sync_tray_themes()
+
+    def sync_tray_themes(self):
+        self.tray.themes = [('', 'MBTI（默认）')] + [(key, theme['name']) for key, theme in self.themes.items()]
+        self.tray.theme = self.theme_id
+
+    def set_theme(self, theme_id):
+        if theme_id and theme_id not in self.themes:
+            self.reload_themes()
+            if theme_id not in self.themes:
+                return
+        self.theme_id = theme_id
+        self.config['theme'] = theme_id
+        write_json('settings.json', self.config)
+        self.fill_theme_choice()
+        self.sync_tray_themes()
+        self.badges.signature = None  # Relabel visible names on the next read.
+        self.last_snapshot = 0
+        self.render_table()
+        self.status.set('标签显示：' + (self.themes[theme_id]['name'] + ' 主题角色' if theme_id else 'MBTI'))
+
+    def open_theme_folder(self):
+        folder = ensure_custom_folder()
+        self.status.set('在此文件夹中复制示例文件、改名并填写角色，保存后在“标签显示”中选择。')
+        os.startfile(folder)
 
     def show_panel(self):
         self.root.deiconify()

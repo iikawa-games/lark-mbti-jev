@@ -7,6 +7,7 @@ from .store import DATA
 CLASS_NAME = 'FeishuMbtiTray'
 WM_TRAY = 0x8000 + 1      # WM_APP + 1: icon mouse events
 WM_SHOW_PANEL = 0x8000 + 2  # sent by a second launch
+THEME_BASE = 100  # Menu ids for the theme submenu
 MENU = [(1, 'show', '打开面板'), (2, 'toggle', None), (3, 'refresh', '刷新聊天'), (0, None, None), (9, 'quit', '退出')]
 
 
@@ -41,6 +42,8 @@ class Tray:
         self.on_command = on_command
         self.tooltip = tooltip
         self.enabled = False
+        self.themes = []  # [(theme id, name)], set by the app
+        self.theme = ''
         self.hwnd = None
         self._ready = threading.Event()
         threading.Thread(target=self._run, daemon=True, name='tray').start()
@@ -103,6 +106,10 @@ class Tray:
         import win32con
         import win32gui
         menu = win32gui.CreatePopupMenu()
+        themes = win32gui.CreatePopupMenu()
+        for index, (key, name) in enumerate(self.themes):
+            flags = win32con.MF_STRING | (win32con.MF_CHECKED if key == self.theme else 0)
+            win32gui.AppendMenu(themes, flags, THEME_BASE + index, name)
         for command_id, _, text in MENU:
             if not command_id:
                 win32gui.AppendMenu(menu, win32con.MF_SEPARATOR, 0, '')
@@ -110,6 +117,8 @@ class Tray:
             if text is None:
                 text = '暂停标签' if self.enabled else '开启标签'
             win32gui.AppendMenu(menu, win32con.MF_STRING, command_id, text)
+            if command_id == 2 and self.themes:
+                win32gui.AppendMenu(menu, win32con.MF_POPUP, themes, '标签显示')
         win32gui.SetMenuDefaultItem(menu, 1, False)
         x, y = win32gui.GetCursorPos()
         # Required so the menu closes when the user clicks elsewhere.
@@ -120,6 +129,9 @@ class Tray:
 
     def _on_menu(self, hwnd, msg, wparam, lparam):
         command_id = wparam & 0xFFFF
+        if THEME_BASE <= command_id < THEME_BASE + len(self.themes):
+            self.on_command('theme:' + self.themes[command_id - THEME_BASE][0])
+            return 0
         for item_id, name, _ in MENU:
             if item_id == command_id and name:
                 self.on_command(name)

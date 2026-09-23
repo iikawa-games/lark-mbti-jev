@@ -1,0 +1,22 @@
+{
+  "name": "少女乐队",
+  "description": "综合多部少女乐队作品。类型与角色的对应是粉丝向的娱乐归类。",
+  "characters": {
+    "ISTJ": {"name": "椎名立希", "series": "MyGO!!!!!"},
+    "ISFJ": {"name": "秋山澪", "series": "轻音少女"},
+    "INFJ": {"name": "若叶睦", "series": "Ave Mujica"},
+    "INTJ": {"name": "凑友希那", "series": "BanG Dream!"},
+    "ISTP": {"name": "要乐奈", "series": "MyGO!!!!!"},
+    "ISFP": {"name": "后藤一里", "series": "孤独摇滚！"},
+    "INFP": {"name": "高松灯", "series": "MyGO!!!!!"},
+    "INTP": {"name": "山田凉", "series": "孤独摇滚！"},
+    "ESTP": {"name": "田井中律", "series": "轻音少女"},
+    "ESFP": {"name": "平泽唯", "series": "轻音少女"},
+    "ENFP": {"name": "户山香澄", "series": "BanG Dream!"},
+    "ENTP": {"name": "河原木桃香", "series": "Girls Band Cry"},
+    "ESTJ": {"name": "白鹭千圣", "series": "BanG Dream!"},
+    "ESFJ": {"name": "伊地知虹夏", "series": "孤独摇滚！"},
+    "ENFJ": {"name": "喜多郁代", "series": "孤独摇滚！"},
+    "ENTJ": {"name": "丰川祥子", "series": "Ave Mujica"}
+  }
+}

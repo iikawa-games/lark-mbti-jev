@@ -2,6 +2,7 @@
 import math
 import re
 from .classifier import RESULT_VERSION
+from .themes import character
 
 
 def is_current_profile(profile):
@@ -16,7 +17,7 @@ def is_current_profile(profile):
     )
 
 
-def format_profile(profile, *, empty='分析中'):
+def format_profile(profile, *, empty='分析中', theme=None):
     if not profile:
         return empty
     if profile.get('display_status'):
@@ -26,4 +27,6 @@ def format_profile(profile, *, empty='分析中'):
     if profile.get('status') == 'insufficient':
         return '暂无文本'
     percentage = math.floor(profile['probability'] * 100 + 0.5)
-    return f'{profile["label"]} {percentage}%'
+    # A theme shows its character for the type; the probability is unchanged.
+    person = character(theme, profile['label'])
+    return f'{person["name"] if person else profile["label"]} {percentage}%'

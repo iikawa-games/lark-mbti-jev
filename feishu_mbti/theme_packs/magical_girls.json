@@ -1,0 +1,22 @@
+{
+  "name": "魔法少女",
+  "description": "综合多部魔法少女作品。类型与角色的对应是粉丝向的娱乐归类。",
+  "characters": {
+    "ISTJ": {"name": "水野亚美", "series": "美少女战士"},
+    "ISFJ": {"name": "鹿目圆", "series": "魔法少女小圆"},
+    "INFJ": {"name": "菲特", "series": "魔法少女奈叶"},
+    "INTJ": {"name": "晓美焰", "series": "魔法少女小圆"},
+    "ISTP": {"name": "天王遥", "series": "美少女战士"},
+    "ISFP": {"name": "土萌萤", "series": "美少女战士"},
+    "INFP": {"name": "环彩羽", "series": "魔法纪录"},
+    "INTP": {"name": "美游", "series": "魔法少女伊莉雅"},
+    "ESTP": {"name": "佐仓杏子", "series": "魔法少女小圆"},
+    "ESFP": {"name": "月野兔", "series": "美少女战士"},
+    "ENFP": {"name": "木之本樱", "series": "魔卡少女樱"},
+    "ENTP": {"name": "伊莉雅", "series": "魔法少女伊莉雅"},
+    "ESTJ": {"name": "七海八千代", "series": "魔法纪录"},
+    "ESFJ": {"name": "巴麻美", "series": "魔法少女小圆"},
+    "ENFJ": {"name": "高町奈叶", "series": "魔法少女奈叶"},
+    "ENTJ": {"name": "火野丽", "series": "美少女战士"}
+  }
+}
