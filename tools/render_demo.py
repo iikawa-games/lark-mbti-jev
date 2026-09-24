@@ -1,4 +1,4 @@
-"""Render a shareable UI illustration using fictional data only. No screen capture."""
+"""Render the README illustrations from an anime dialogue: plain MBTI and a character theme. No screen capture."""
 from pathlib import Path
 from functools import lru_cache
 import argparse
@@ -9,14 +9,17 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from feishu_mbti.presentation import format_profile
+from feishu_mbti.themes import load_themes
 
 SCALE = 2
 WIDTH, HEIGHT = 1460, 603
 ORIGIN_X, ORIGIN_Y = 70, 255
 INK, MUTED, BLUE = '#252b37', '#768295', '#3370ff'
+# The same chat twice: plain MBTI, then the built-in 少女乐队 theme.
+VARIANTS = (('demo.png', None, '本机标签已开启'), ('demo-girl-bands.png', 'girl_bands', '少女乐队主题'))
 
 
-def render(output, font_path=None):
+def render(output, font_path=None, theme=None, status='本机标签已开启'):
     candidates = [Path(font_path)] if font_path else [
         Path(os.environ.get('WINDIR', 'C:/Windows')) / 'Fonts/msyh.ttc',
         Path('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc'),
@@ -68,34 +71,38 @@ def render(output, font_path=None):
     rect((190, 316, 416, 353), '#f3f5f8', 8)
     text(205, 335, '搜索', 18, '#98a1b0')
     rect((184, 375, 426, 468), '#e7efff', 10)
-    avatar(199, 394, '周', '#d3e1ff')
-    text(253, 405, '周五灵感社', 20)
-    text(253, 438, '一起把想法做出来', 15, MUTED)
+    avatar(199, 394, 'A', '#d3e1ff')
+    text(253, 405, 'Ave Mujica', 20)
+    text(253, 438, 'MyGO!!!!! 第 13 集', 15, MUTED)
     for y, initial, title, summary in [(505, '设', '设计漫游', '新的灵感已收藏'), (606, '读', '午后读书会', '下次聊聊这本书')]:
         avatar(199, y, initial, '#edf1f7', MUTED)
         text(253, y+10, title, 20)
         text(253, y+42, summary, 15, MUTED)
     line(438, 255, 438, 858)
-    text(468, 285, '周五灵感社', 25)
-    text(653, 286, '虚构演示群', 17, MUTED)
+    title_width = text(468, 285, 'Ave Mujica', 25)
+    text(468 + title_width + 24, 286, '演示群', 17, MUTED)
     rect((1321, 271, 1498, 304), '#eff8f4', 16)
-    text(1340, 287, '●  本机标签已开启', 16, '#358365')
+    text(1340, 287, f'●  {status}', 16, '#358365')
     line(438, 324, 1530, 324)
 
     samples = [
-        ('米娅', '米', '#e6e0fb', '#7963b2', 'INTP', .65, 367, '先把问题拆开，再看哪一步最值得验证。', 685, '14:20'),
-        ('林间', '林', '#e2efe6', '#5c8569', 'ENFP', .72, 499, '我画了两个方向，大家更想试哪个？', 612, '14:21'),
-        ('程墨', '程', '#f9eadb', '#af8459', 'ISTJ', .68, 631, '先约好验证标准，明天一起看结果。', 612, '14:22'),
+        # BanG Dream! It's MyGO!!!!! episode 13: Mutsumi says why she is joining Ave Mujica.
+        ('睦', '睦', '#e2efe6', '#5c8569', 'INFJ', .71, 367, '因为祥……好像快要坏掉了。', '19:02'),
+        ('祥子', '祥', '#e3e8f7', '#5b6fa8', 'ENTJ', .68, 499, '还真是高高在上呢。', '19:02'),
+        ('祥子', '祥', '#e3e8f7', '#5b6fa8', 'ENTJ', .68, 631, '担心就免了，过去软弱的我已经死了。', '19:02'),
     ]
-    for name, initial, background, foreground, label, probability, y, message, width, timestamp in samples:
+    for name, initial, background, foreground, label, probability, y, message, timestamp in samples:
         avatar(465, y-8, initial, background, foreground)
         name_width = text(523, y+5, name, 22, '#646a73')
-        value = format_profile({'label': label, 'probability': probability, 'status': 'uncertain', 'result_version': 2})
-        badge_width = draw.textlength(value, font=font(22, True)) / SCALE + 12
+        value = format_profile({'label': label, 'probability': probability, 'status': 'uncertain', 'result_version': 2},
+                               theme=theme)
+        latin = value.isascii()  # Segoe UI has no CJK glyphs for character names.
+        badge_width = draw.textlength(value, font=font(22, latin)) / SCALE + 12
         left = 523 + name_width + 12
         rect((left, y-10, left+badge_width, y+20), '#f2f4f7', 0)
-        text(left+6, y+5, value, 22, '#646a73', True)
+        text(left+6, y+5, value, 22, '#646a73', latin)
         text(1416, y+5, timestamp, 16, '#a1a9b5', True)
+        width = draw.textlength(message, font=font(24)) / SCALE + 44
         rect((522, y+36, 522+width, y+98), '#f2f4f6', 12)
         text(544, y+67, message, 24)
     line(438, 757, 1530, 757)
@@ -106,12 +113,14 @@ def render(output, font_path=None):
 
     output.parent.mkdir(parents=True, exist_ok=True)
     image.resize((WIDTH, HEIGHT), Image.Resampling.LANCZOS).save(output)
-    print(f'Rendered {output.name}: {WIDTH} x {HEIGHT}, fictional data only.')
+    print(f'Rendered {output.name}: {WIDTH} x {HEIGHT}, no personal data.')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--font', help='Path to a Chinese-capable .ttf or .ttc font')
-    parser.add_argument('--output', type=Path, default=ROOT / 'docs/demo.png')
+    parser.add_argument('--output-dir', type=Path, default=ROOT / 'docs')
     args = parser.parse_args()
-    render(args.output, args.font)
+    themes = load_themes()
+    for filename, theme_id, status in VARIANTS:
+        render(args.output_dir / filename, args.font, themes.get(theme_id), status)
