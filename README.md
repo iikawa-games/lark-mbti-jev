@@ -2,16 +2,13 @@
 
 一个用于 Windows 飞书 / Lark 群聊的小工具。它让 Jev 根据聊天记录推测成员的 MBTI，并在发言者姓名旁显示结果，例如 **ENTJ 68%**，也可以换成动漫角色，例如 **丰川祥子 68%**。标签只在你的电脑上显示。
 
-<table>
-  <tr>
-    <td><img src="docs/demo-mbti.png" alt="姓名旁显示 MBTI 和概率"></td>
-    <td><img src="docs/demo-girl-bands.png" alt="姓名旁显示少女乐队角色和概率"></td>
-  </tr>
-  <tr>
-    <td align="center">默认：MBTI 类型</td>
-    <td align="center">少女乐队主题：同一类型对应的角色</td>
-  </tr>
-</table>
+**默认：MBTI 类型**
+
+![姓名旁显示 MBTI 和概率](docs/demo-mbti.png)
+
+**少女乐队主题：同一类型对应的角色**
+
+![姓名旁显示少女乐队角色和概率](docs/demo-girl-bands.png)
 
 > 图中消息是《BanG Dream! It's MyGO!!!!!》第 13 集睦和祥子的原对话（中文译文），概率为演示数值。本工具由第三方开发，独立于飞书运行。
 
