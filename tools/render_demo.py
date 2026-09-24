@@ -16,7 +16,7 @@ WIDTH, HEIGHT = 1460, 603
 ORIGIN_X, ORIGIN_Y = 70, 255
 INK, MUTED, BLUE = '#252b37', '#768295', '#3370ff'
 # The same chat twice: plain MBTI, then the built-in 少女乐队 theme.
-VARIANTS = (('demo.png', None, '本机标签已开启'), ('demo-girl-bands.png', 'girl_bands', '少女乐队主题'))
+VARIANTS = (('demo-mbti.png', None, '本机标签已开启'), ('demo-girl-bands.png', 'girl_bands', '少女乐队主题'))
 
 
 def render(output, font_path=None, theme=None, status='本机标签已开启'):

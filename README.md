@@ -4,7 +4,7 @@
 
 <table>
   <tr>
-    <td><img src="docs/demo.png" alt="姓名旁显示 MBTI 和概率"></td>
+    <td><img src="docs/demo-mbti.png" alt="姓名旁显示 MBTI 和概率"></td>
     <td><img src="docs/demo-girl-bands.png" alt="姓名旁显示少女乐队角色和概率"></td>
   </tr>
   <tr>
@@ -122,6 +122,6 @@ Jev 同时判断四个 MBTI 维度，并比较 16 种类型。`INTP 65%` 表示�
 .\.venv\Scripts\python.exe tools/render_demo.py
 ```
 
-`tools/render_demo.py` 用上面的动画对话生成 `docs/demo.png`（MBTI）和 `docs/demo-girl-bands.png`（少女乐队主题），不读取个人聊天，也不调用 Jev。默认使用系统中文字体，可用 `--font` 指定。
+`tools/render_demo.py` 用上面的动画对话生成 `docs/demo-mbti.png`（MBTI）和 `docs/demo-girl-bands.png`（少女乐队主题），不读取个人聊天，也不调用 Jev。默认使用系统中文字体，可用 `--font` 指定。
 
 接口参考：[TypeSafe API](https://docs.typesafe.ai/api)、[Choice](https://docs.typesafe.ai/primitives/choice)、[Windows OCR](https://github.com/microsoft/Windows-universal-samples/tree/main/Samples/OCR)、[鼠标监听](https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelmouseproc)。
